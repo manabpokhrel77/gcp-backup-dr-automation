@@ -1,0 +1,135 @@
+name: GCP Backup DR Discovery
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 8 * * *"
+
+permissions:
+  contents: write
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: backup-dr-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    name: Discover and Validate Backup Associations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      GOOGLE_CLOUD_PROJECT: manab-test-project
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/706329624933/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+          service_account: github-backup-discovery@manab-test-project.iam.gserviceaccount.com
+          project_id: manab-test-project
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+            python-version: "3.12"
+            cache: pip
+            cache-dependency-path: scripts/requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+            python -m pip install --upgrade pip
+            python -m pip install -r scripts/requirements.txt
+
+      - name: Discover GCP VMs and backup plans
+        run: python scripts/discover.py
+
+      - name: Resolve VM backup policies
+        run: python scripts/resolve.py
+
+      - name: Generate Terraform associations
+        run: python scripts/generate_tfvars.py
+
+      - name: Validate association changes
+        run: python scripts/validate_changes.py
+
+      - name: Validate Terraform JSON
+        run: |
+          python -m json.tool \
+            terraform/associations/in_scope.auto.tfvars.json \
+            > /dev/null
+
+          echo "Terraform JSON syntax is valid."
+
+      - name: Check generated configuration
+        id: changes
+        shell: bash
+        run: |
+          if git diff --quiet -- terraform/associations/in_scope.auto.tfvars.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No association changes detected."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Association changes detected."
+          fi
+
+      - name: Show association changes
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git diff --stat -- \
+            terraform/associations/in_scope.auto.tfvars.json
+
+      - name: Create backup association pull request
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ github.token }}
+          base: main
+          branch: automation/backup-dr-associations
+          delete-branch: true
+          add-paths: |
+            terraform/associations/in_scope.auto.tfvars.json
+          commit-message: "chore: update GCP Backup DR associations"
+          title: "Automated GCP Backup DR association update"
+          body: |
+            ## Automated Backup DR Discovery
+
+            GitHub Actions detected new eligible VM associations.
+
+            ### Validation
+
+            - Cloud Asset Inventory discovery completed.
+            - Backup plans resolved by region and environment.
+            - Existing Terraform associations preserved.
+            - Association removals and modifications blocked.
+            - Generated Terraform JSON validated.
+
+            ### Deployment
+
+            1. Review the generated Terraform JSON.
+            2. Review the HCP Terraform speculative plan.
+            3. Merge the pull request into main.
+            4. Review the HCP Terraform plan.
+            5. Manually approve the Terraform apply.
+
+            This workflow does not directly modify GCP resources.
+
+      - name: Report no changes
+        if: steps.changes.outputs.changed == 'false'
+        run: |
+          echo "Backup DR discovery completed successfully."
+          echo "No Terraform association changes."
+          echo "No pull request required."

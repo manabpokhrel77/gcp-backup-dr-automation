@@ -15,6 +15,7 @@ REGIONS = (
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+OUTPUT_FILE = BASE_DIR / "discovery.json"
 
 
 def discover_vms():
@@ -27,14 +28,10 @@ def discover_vms():
         page_size=500,
     )
 
-    results = client.search_all_resources(request=request)
-
     vms = []
 
-    for vm in results:
-        vms.append(
-            asset_v1.ResourceSearchResult.to_dict(vm)
-        )
+    for vm in client.search_all_resources(request=request):
+        vms.append(asset_v1.ResourceSearchResult.to_dict(vm))
 
     return vms
 
@@ -70,6 +67,8 @@ def main():
         vms = discover_vms()
         plans = discover_backup_plans()
 
+        # An entirely empty VM inventory may indicate
+        # incomplete discovery or an unexpected environment.
         if not vms:
             raise RuntimeError(
                 "No VMs discovered. Refusing to continue."
@@ -86,19 +85,16 @@ def main():
             "backup_plans": plans,
         }
 
-        output_file = BASE_DIR / "discovery.json"
-
-        with open(output_file, "w", encoding="utf-8") as file:
+        with open(OUTPUT_FILE, "w", encoding="utf-8") as file:
             json.dump(output, file, indent=2)
+            file.write("\n")
 
         print(f"Discovered {len(vms)} VMs")
         print(f"Discovered {len(plans)} backup plans")
-        print(f"Saved discovery results to {output_file}")
+        print(f"Saved discovery results to {OUTPUT_FILE}")
 
     except (GoogleAPICallError, RuntimeError) as error:
-        raise SystemExit(
-            f"Discovery failed: {error}"
-        )
+        raise SystemExit(f"Discovery failed: {error}")
 
 
 if __name__ == "__main__":

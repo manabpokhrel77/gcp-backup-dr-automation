@@ -4,8 +4,19 @@ gcloudCMDlineconfig/
 **/adc.json
 **/credentials.db
 **/access_tokens.db
+*service-account*.json
+*credentials*.json
 
-# Local inventory
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Python generated inventory
+discovery.json
+resolved.json
 vm_inventory.json
 
 # Terraform
@@ -16,33 +27,7 @@ vm_inventory.json
 crash.log
 crash.*.log
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-
-# Secrets
-.env
-.env.*
-*.pem
-*.key
-
-# macOS
-.DS_Store
-
-# Python virtual environments
-.venv/
-__pycache__/
-*.pyc
-
-# Python generated files
-discovery.json
-vm_inventory.json
-
-# Python generated files
-resolved.json
-
-# Terraform variable files (may contain secrets)
+# Terraform variable files
 *.tfvars
 *.tfvars.json
 
@@ -54,6 +39,16 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# macOS
+.DS_Store
 
 # IDE
 .idea/

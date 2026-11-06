@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+
 DISCOVERY_FILE = BASE_DIR / "discovery.json"
 OUTPUT_FILE = BASE_DIR / "resolved.json"
 
@@ -24,6 +26,7 @@ def has_backup_tag(vm):
         for tag in group.get("effective_tags", []):
             if tag.get("tag_value") == BACKUP_TAG:
                 return True
+
     return False
 
 
@@ -36,6 +39,9 @@ def classify_vm(vm):
         return "UNRESOLVED", "Missing VM information"
 
     labels = vm.get("labels", {})
+
+    if not isinstance(labels, dict):
+        return "UNRESOLVED", "Invalid VM labels"
 
     if not has_backup_tag(vm):
         return "OUT_OF_SCOPE", "Backup tag not enabled"
@@ -89,7 +95,7 @@ def main():
     if not isinstance(plans, list) or not plans:
         raise ValueError("Backup plan inventory is empty or invalid")
 
-    # Fail closed if tag information was not returned.
+    # Fail closed when effective tag information is missing.
     if any("effective_tags" not in vm for vm in vms):
         raise ValueError("Incomplete effective tag discovery")
 
@@ -100,6 +106,7 @@ def main():
 
     for vm in vms:
         decision, reason = classify_vm(vm)
+
         name = vm.get("display_name", "unknown")
 
         print(f"VM: {name}")
@@ -109,14 +116,16 @@ def main():
         if decision == "INCLUDE":
             plan = resolve_plan(vm, plans)
 
-            included.append({
-                "vm_name": name,
-                "vm_resource": vm["name"],
-                "zone": vm["location"],
-                "region": get_region(vm["location"]),
-                "environment": vm["labels"]["environment"],
-                "backup_plan": plan,
-            })
+            included.append(
+                {
+                    "vm_name": name,
+                    "vm_resource": vm["name"],
+                    "zone": vm["location"],
+                    "region": get_region(vm["location"]),
+                    "environment": vm["labels"]["environment"],
+                    "backup_plan": plan,
+                }
+            )
 
             print(f"Backup plan: {plan}")
 
@@ -144,13 +153,17 @@ def main():
             "Refusing to generate associations."
         )
 
-    if not included:
-        raise ValueError(
-            "No eligible VMs found. Refusing to generate empty associations."
-        )
+    # Zero eligible VMs is allowed.
+    # Existing Terraform associations will be preserved
+    # by generate_tfvars.py.
+
+    output = {
+        "associations": included
+    }
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as file:
-        json.dump({"associations": included}, file, indent=2)
+        json.dump(output, file, indent=2)
+        file.write("\n")
 
     print(f"\nSaved resolved associations to {OUTPUT_FILE}")
 
