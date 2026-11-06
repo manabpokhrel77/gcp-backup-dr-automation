@@ -1,0 +1,31 @@
+# Google Cloud credentials and configuration
+gcloudCMDlineconfig/
+**/application_default_credentials.json
+**/adc.json
+**/credentials.db
+**/access_tokens.db
+
+# Local inventory
+vm_inventory.json
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# macOS
+.DS_Store
